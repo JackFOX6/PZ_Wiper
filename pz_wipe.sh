@@ -324,13 +324,20 @@ wipe_dir() {
 wipe_world_state() {
     local preserve_meta="${1:-false}"
     local preserve_visited="${2:-false}"
+    local preserve_zpop_selective="${3:-false}"
     echo ""
     echo -e "${BLD}  Limpiando estado del mundo...${RST}"
 
     # Directorios de datos de mapa (derivados)
     wipe_dir  "${SAVE_DIR}/isoregiondata"       "isoregiondata/"
     wipe_dir  "${SAVE_DIR}/chunkdata"            "chunkdata/"
-    wipe_dir  "${SAVE_DIR}/zpop"                 "zpop/ (población zombie)"
+    
+    if [[ "$preserve_zpop_selective" == "true" ]]; then
+        log_keep "zpop/ — PRESERVACIÓN SELECTIVA (evita zombies en bases)"
+    else
+        wipe_dir  "${SAVE_DIR}/zpop"                 "zpop/ (población zombie)"
+    fi
+    
     wipe_dir  "${SAVE_DIR}/apop"                 "apop/ (animales)"
     wipe_dir  "${SAVE_DIR}/metagrid"             "metagrid/"
     
@@ -719,7 +726,46 @@ do_selective_wipe() {
         find "${SAVE_DIR}/map" -type d -empty -delete 2>/dev/null || true
     fi
 
-    wipe_world_state "true" "true"
+    # Borrado selectivo de zpop/ (población zombie) para evitar spawnkill en bases
+    local zpop_dir="${SAVE_DIR}/zpop"
+    local deleted_zpop=0
+    if [[ -d "$zpop_dir" ]]; then
+        # Construir mapa de celdas protegidas para búsqueda O(1)
+        declare -A PROTECTED_CELLS=()
+        for entry in "${PROTECTED_CHUNKS[@]:-}"; do
+            IFS=':' read -r cx cy <<< "$entry"
+            local cell_x=$(( cx * 8 / 300 ))
+            local cell_y=$(( cy * 8 / 300 ))
+            PROTECTED_CELLS["${cell_x}_${cell_y}"]=1
+        done
+
+        # Analizar cada zpop_X_Y.bin
+        local zpop_queue
+        zpop_queue=$(mktemp)
+        while IFS= read -r zpop_file; do
+            local zfile="${zpop_file##*/}"
+            if [[ "$zfile" =~ zpop_([0-9]+)_([0-9]+)\.bin ]]; then
+                local zx="${BASH_REMATCH[1]}"
+                local zy="${BASH_REMATCH[2]}"
+                if [[ -z "${PROTECTED_CELLS["${zx}_${zy}"]:-}" ]]; then
+                    echo "$zpop_file" >> "$zpop_queue"
+                    ((deleted_zpop++)) || true
+                fi
+            fi
+        done < <(find "$zpop_dir" -name "zpop_*.bin" 2>/dev/null)
+
+        if [[ -s "$zpop_queue" ]]; then
+            if ! $DRY_RUN; then
+                xargs rm -f < "$zpop_queue"
+                log_ok "Limpieza selectiva de zpop/ completada: se borraron ${deleted_zpop} archivos de población zombie."
+            else
+                log_info "  [DRY] Borraría ${deleted_zpop} archivos de población zombie (zpop/)"
+            fi
+        fi
+        rm -f "$zpop_queue"
+    fi
+
+    wipe_world_state "true" "true" "true"
 }
 
 # ════════════════════════════════════════════════════════════════════════════
