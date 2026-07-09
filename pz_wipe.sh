@@ -325,12 +325,18 @@ wipe_world_state() {
     local preserve_meta="${1:-false}"
     local preserve_visited="${2:-false}"
     local preserve_zpop_selective="${3:-false}"
+    local preserve_cdata_selective="${4:-false}"
     echo ""
     echo -e "${BLD}  Limpiando estado del mundo...${RST}"
 
     # Directorios de datos de mapa (derivados)
     wipe_dir  "${SAVE_DIR}/isoregiondata"       "isoregiondata/"
-    wipe_dir  "${SAVE_DIR}/chunkdata"            "chunkdata/"
+    
+    if [[ "$preserve_cdata_selective" == "true" ]]; then
+        log_keep "chunkdata/ — PRESERVACIÓN SELECTIVA (evita reinicio de tiempo invisible)"
+    else
+        wipe_dir  "${SAVE_DIR}/chunkdata"            "chunkdata/"
+    fi
     
     if [[ "$preserve_zpop_selective" == "true" ]]; then
         log_keep "zpop/ — PRESERVACIÓN SELECTIVA (evita zombies en bases)"
@@ -765,7 +771,36 @@ do_selective_wipe() {
         rm -f "$zpop_queue"
     fi
 
-    wipe_world_state "true" "true" "true"
+    # Borrado selectivo de chunkdata/ para evitar que se reseteen los contadores de visita
+    local cdata_dir="${SAVE_DIR}/chunkdata"
+    local deleted_cdata=0
+    if [[ -d "$cdata_dir" ]]; then
+        local cdata_queue
+        cdata_queue=$(mktemp)
+        while IFS= read -r cdata_file; do
+            local cfile="${cdata_file##*/}"
+            if [[ "$cfile" =~ chunkdata_([0-9]+)_([0-9]+)\.bin ]]; then
+                local cx="${BASH_REMATCH[1]}"
+                local cy="${BASH_REMATCH[2]}"
+                if [[ -z "${PROTECTED_CELLS["${cx}_${cy}"]:-}" ]]; then
+                    echo "$cdata_file" >> "$cdata_queue"
+                    ((deleted_cdata++)) || true
+                fi
+            fi
+        done < <(find "$cdata_dir" -name "chunkdata_*.bin" 2>/dev/null)
+
+        if [[ -s "$cdata_queue" ]]; then
+            if ! $DRY_RUN; then
+                xargs rm -f < "$cdata_queue"
+                log_ok "Limpieza selectiva de chunkdata/ completada: se borraron ${deleted_cdata} archivos de metadatos de chunk."
+            else
+                log_info "  [DRY] Borraría ${deleted_cdata} archivos de metadatos de chunk (chunkdata/)"
+            fi
+        fi
+        rm -f "$cdata_queue"
+    fi
+
+    wipe_world_state "true" "true" "true" "true"
 }
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -860,6 +895,34 @@ build_protected_set_from_db() {
         fi
     else
         log_warn "  No se encontró players.db o sqlite3 no está disponible."
+    fi
+
+    # 3. Detectar vehículos desde vehicles.db para evitar que desaparezcan del mapa
+    local v_db="${SAVE_DIR}/vehicles.db"
+    local vehicle_count=0
+    if [[ -f "$v_db" ]] && command -v sqlite3 &>/dev/null; then
+        log_info "Escaneando vehículos registrados en vehicles.db..."
+        local v_data
+        v_data=$(sqlite3 "$v_db" "SELECT wx, wy FROM vehicles;" 2>/dev/null || true)
+        
+        if [[ -n "$v_data" ]]; then
+            while IFS='|' read -r vwx vwy; do
+                if [[ -n "$vwx" && "$vwx" =~ ^-?[0-9]+$ && -n "$vwy" && "$vwy" =~ ^-?[0-9]+$ ]]; then
+                    ((vehicle_count++)) || true
+                    # Para vehículos, usamos un margen estrecho de 1 chunk de seguridad
+                    for ((dcx=-1; dcx<=1; dcx++)); do
+                        for ((dcy=-1; dcy<=1; dcy++)); do
+                            PROTECTED_CHUNKS+=("$((vwx+dcx)):$((vwy+dcy))")
+                        done
+                    done
+                fi
+            done <<< "$v_data"
+            log_ok "  [VEHÍCULOS DETECTADOS] ${vehicle_count} vehículos indexados (+ margen 1 chunk)"
+        else
+            log_warn "  No se encontraron vehículos registrados en vehicles.db."
+        fi
+    else
+        log_warn "  No se encontró vehicles.db o sqlite3 no está disponible."
     fi
 
     # Eliminar duplicados si se poblaron chunks protegidos
