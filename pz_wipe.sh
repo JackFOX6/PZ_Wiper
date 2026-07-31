@@ -133,6 +133,22 @@ validate_environment() {
     echo ""
     log_info "Validando entorno..."
 
+    # Auto-detección inteligente del save si SERVER_NAME por defecto no existe en disco
+    if [[ ! -d "$SAVE_DIR" && -d "${PZ_BASE_DIR}/Saves/Multiplayer" ]]; then
+        local saves=()
+        mapfile -t saves < <(ls -1 "${PZ_BASE_DIR}/Saves/Multiplayer" 2>/dev/null || true)
+        if [[ ${#saves[@]} -eq 1 && -n "${saves[0]:-}" ]]; then
+            SERVER_NAME="${saves[0]}"
+            SAVE_DIR="${PZ_BASE_DIR}/Saves/Multiplayer/${SERVER_NAME}"
+            SERVER_INI="${SERVER_CONFIG_DIR}/${SERVER_NAME}.ini"
+            SERVER_SANDBOX="${SERVER_CONFIG_DIR}/${SERVER_NAME}_SandboxVars.lua"
+            SERVER_SPAWNPOINTS="${SERVER_CONFIG_DIR}/${SERVER_NAME}_spawnpoints.lua"
+            SERVER_SPAWNREGIONS="${SERVER_CONFIG_DIR}/${SERVER_NAME}_spawnregions.lua"
+            USERS_DB="${DB_DIR}/${SERVER_NAME}.db"
+            log_info "Auto-detectado único servidor save en disco: ${BLD}${SERVER_NAME}${RST}"
+        fi
+    fi
+
     # Verificar directorio base
     if [[ ! -d "$PZ_BASE_DIR" ]]; then
         log_error "PZ_BASE_DIR no existe: ${BLD}${PZ_BASE_DIR}${RST}"
@@ -150,11 +166,15 @@ validate_environment() {
         ((errors++))
     fi
 
-    # Verificar players.db (save válido)
+    # Verificar mapa o players.db (save válido)
     if [[ ! -f "${SAVE_DIR}/players.db" ]]; then
-        log_error "players.db no encontrado en el save."
-        log_error "El servidor debe haberse ejecutado al menos una vez."
-        ((errors++))
+        if [[ -d "${SAVE_DIR}/map" ]]; then
+            log_warn "players.db no encontrado en el save, pero carpeta map/ existe (servidor recién creado o sin usuarios activos)."
+        else
+            log_error "players.db ni carpeta map/ encontrados en el save: ${SAVE_DIR}"
+            log_error "El servidor debe haberse ejecutado al menos una vez para generar el mapa."
+            ((errors++))
+        fi
     fi
 
     # Verificar directorio de config
@@ -327,10 +347,11 @@ wipe_world_state() {
     local preserve_zpop_selective="${3:-false}"
     local preserve_cdata_selective="${4:-false}"
     echo ""
-    echo -e "${BLD}  Limpiando estado del mundo...${RST}"
+    echo -e "${BLD}  Limpiando estado del mundo (Build 42)...${RST}"
 
     # Directorios de datos de mapa (derivados)
     wipe_dir  "${SAVE_DIR}/isoregiondata"       "isoregiondata/"
+    wipe_dir  "${SAVE_DIR}/vehicle_data"        "vehicle_data/"
     
     if [[ "$preserve_cdata_selective" == "true" ]]; then
         log_keep "chunkdata/ — PRESERVACIÓN SELECTIVA (evita reinicio de tiempo invisible)"
@@ -368,12 +389,23 @@ wipe_world_state() {
     wipe_file "${SAVE_DIR}/map_worldgen.bin"     "map_worldgen.bin"
     wipe_file "${SAVE_DIR}/map_animals.bin"      "map_animals.bin"
     wipe_file "${SAVE_DIR}/map_basements.bin"    "map_basements.bin"
+    wipe_file "${SAVE_DIR}/map_fluid.bin"        "map_fluid.bin (fluidos B42)"
+    wipe_file "${SAVE_DIR}/map_movables.bin"     "map_movables.bin (muebles B42)"
+    wipe_file "${SAVE_DIR}/map_electricity.bin"  "map_electricity.bin (red eléctrica B42)"
+    wipe_file "${SAVE_DIR}/map_water.bin"        "map_water.bin (red de agua B42)"
+    wipe_file "${SAVE_DIR}/map_farming.bin"      "map_farming.bin (cultivos B42)"
+    wipe_file "${SAVE_DIR}/heat_map.bin"         "heat_map.bin (mapa de calor/sonido B42)"
     wipe_file "${SAVE_DIR}/erosion.ini"          "erosion.ini"
     wipe_file "${SAVE_DIR}/reanimated.bin"       "reanimated.bin"
     wipe_file "${SAVE_DIR}/z_outfits.bin"        "z_outfits.bin"
     wipe_file "${SAVE_DIR}/iTrack.bin"           "iTrack.bin (loot tracker)"
     wipe_file "${SAVE_DIR}/servermap_symbols.bin" "servermap_symbols.bin"
     wipe_file "${SAVE_DIR}/important_area_data.bin" "important_area_data.bin"
+
+    # Wildcards para subarchivos de metadatos del mapa B42
+    for meta_sub in "${SAVE_DIR}"/map_meta_*.bin; do
+        [[ -f "$meta_sub" ]] && wipe_file "$meta_sub" "$(basename "$meta_sub")"
+    done
 
     # Game Object Systems
     for gos_file in "${SAVE_DIR}"/gos_*.bin; do
@@ -536,10 +568,10 @@ build_protected_set_from_zones() {
         IFS=',' read -r tx1 ty1 tx2 ty2 <<< "$zone"
         if [[ $tx1 -gt $tx2 ]]; then local t=$tx1; tx1=$tx2; tx2=$t; fi
         if [[ $ty1 -gt $ty2 ]]; then local t=$ty1; ty1=$ty2; ty2=$t; fi
-        local cx1=$(( tx1/8 - MARGIN_CHUNKS ))
-        local cy1=$(( ty1/8 - MARGIN_CHUNKS ))
-        local cx2=$(( tx2/8 + MARGIN_CHUNKS ))
-        local cy2=$(( ty2/8 + MARGIN_CHUNKS ))
+        local cx1=$(( tx1/10 - MARGIN_CHUNKS ))
+        local cy1=$(( ty1/10 - MARGIN_CHUNKS ))
+        local cx2=$(( tx2/10 + MARGIN_CHUNKS ))
+        local cy2=$(( ty2/10 + MARGIN_CHUNKS ))
         ZONE_MAPS+=("Zona Manual #${count}:${cx1}:${cy1}:${cx2}:${cy2}")
         ((count++)) || true
         log_info "  Zona (${tx1},${ty1})→(${tx2},${ty2}) | Chunks (${cx1},${cy1})→(${cx2},${cy2}) | Margen: ${MARGIN_CHUNKS}"
@@ -559,10 +591,10 @@ build_protected_set_from_zones_append() {
         IFS=',' read -r tx1 ty1 tx2 ty2 <<< "$zone"
         if [[ $tx1 -gt $tx2 ]]; then local t=$tx1; tx1=$tx2; tx2=$t; fi
         if [[ $ty1 -gt $ty2 ]]; then local t=$ty1; ty1=$ty2; ty2=$t; fi
-        local cx1=$(( tx1/8 - MARGIN_CHUNKS ))
-        local cy1=$(( ty1/8 - MARGIN_CHUNKS ))
-        local cx2=$(( tx2/8 + MARGIN_CHUNKS ))
-        local cy2=$(( ty2/8 + MARGIN_CHUNKS ))
+        local cx1=$(( tx1/10 - MARGIN_CHUNKS ))
+        local cy1=$(( ty1/10 - MARGIN_CHUNKS ))
+        local cx2=$(( tx2/10 + MARGIN_CHUNKS ))
+        local cy2=$(( ty2/10 + MARGIN_CHUNKS ))
         ZONE_MAPS+=("Zona Manual Anexa #${count}:${cx1}:${cy1}:${cx2}:${cy2}")
         ((count++)) || true
         log_info "  [ANEXO MANUAL] Zona (${tx1},${ty1})→(${tx2},${ty2}) | Chunks (${cx1},${cy1})→(${cx2},${cy2})"
@@ -740,8 +772,8 @@ do_selective_wipe() {
         declare -A PROTECTED_CELLS=()
         for entry in "${PROTECTED_CHUNKS[@]:-}"; do
             IFS=':' read -r cx cy <<< "$entry"
-            local cell_x=$(( cx * 8 / 300 ))
-            local cell_y=$(( cy * 8 / 300 ))
+            local cell_x=$(( cx / 30 ))
+            local cell_y=$(( cy / 30 ))
             PROTECTED_CELLS["${cell_x}_${cell_y}"]=1
         done
 
@@ -820,7 +852,7 @@ build_protected_set_from_db() {
         
         # Ejecutar python script y capturar la salida JSON
         local json_output
-        json_output=$(python3 "$parser_script" "$map_meta" 2>/dev/null)
+        json_output=$(python3 "$parser_script" "$map_meta" 2>/dev/null || echo '{"safehouses":[]}')
         
         local sh_count
         sh_count=$(echo "$json_output" | jq '.safehouses | length' 2>/dev/null || echo "0")
@@ -839,10 +871,10 @@ build_protected_set_from_db() {
                     local ty2=$(( sy + sh ))
                     log_ok "  [REFUGIO DETECTADO] Owner: ${owner} | Tiles: (${sx},${sy}) → (${tx2},${ty2})"
                     
-                    local cx1=$(( sx/8 - MARGIN_CHUNKS ))
-                    local cy1=$(( sy/8 - MARGIN_CHUNKS ))
-                    local cx2=$(( tx2/8 + MARGIN_CHUNKS ))
-                    local cy2=$(( ty2/8 + MARGIN_CHUNKS ))
+                    local cx1=$(( sx/10 - MARGIN_CHUNKS ))
+                    local cy1=$(( sy/10 - MARGIN_CHUNKS ))
+                    local cx2=$(( tx2/10 + MARGIN_CHUNKS ))
+                    local cy2=$(( ty2/10 + MARGIN_CHUNKS ))
                     
                     ZONE_MAPS+=("Refugio (${owner}):${cx1}:${cy1}:${cx2}:${cy2}")
                     
@@ -860,26 +892,41 @@ build_protected_set_from_db() {
         log_warn "  No se encontró pz_safehouse_parser.py, map_meta.bin, jq o python3 no está instalado."
     fi
 
-    # 2. Detectar posiciones de jugadores desde players.db para evitar vacíos bajo sus pies
+    # 2. Detectar posiciones de jugadores desde players.db con inspección dinámica de columnas
     local p_db="${SAVE_DIR}/players.db"
     if [[ -f "$p_db" ]] && command -v sqlite3 &>/dev/null; then
-        log_info "Escaneando últimas posiciones de jugadores en players.db..."
+        log_info "Escaneando últimas posiciones de jugadores en players.db (con inspección dinámica)..."
+        local p_table="networkPlayers"
+        if ! sqlite3 "$p_db" "SELECT name FROM sqlite_master WHERE type='table' AND name='networkPlayers';" 2>/dev/null | grep -q "networkPlayers"; then
+            if sqlite3 "$p_db" "SELECT name FROM sqlite_master WHERE type='table' AND name='players';" 2>/dev/null | grep -q "players"; then
+                p_table="players"
+            fi
+        fi
+
+        local p_cols
+        p_cols=$(sqlite3 "$p_db" "PRAGMA table_info(${p_table});" 2>/dev/null || true)
+        local col_px="x" col_py="y" col_puser="username"
+        echo "$p_cols" | grep -qi "pos_x" && col_px="pos_x"
+        echo "$p_cols" | grep -qi "pos_y" && col_py="pos_y"
+        echo "$p_cols" | grep -qi "worldX" && col_px="worldX"
+        echo "$p_cols" | grep -qi "worldY" && col_py="worldY"
+        echo "$p_cols" | grep -qi "name" && ! echo "$p_cols" | grep -qi "username" && col_puser="name"
+
         local p_data
-        p_data=$(sqlite3 "$p_db" "SELECT x, y, username FROM networkPlayers;" 2>/dev/null || true)
+        p_data=$(sqlite3 "$p_db" "SELECT ${col_px}, ${col_py}, ${col_puser} FROM ${p_table};" 2>/dev/null || true)
         
         if [[ -n "$p_data" ]]; then
             while IFS='|' read -r px py puser; do
-                # Truncar flotantes de SQLite a enteros compatibles con Bash
                 local pxi=${px%.*}
                 local pyi=${py%.*}
                 
                 if [[ -n "$pxi" && "$pxi" =~ ^-?[0-9]+$ && -n "$pyi" && "$pyi" =~ ^-?[0-9]+$ ]]; then
                     log_ok "  [JUGADOR DETECTADO] '${puser}' en ubicación: (${pxi},${pyi})"
                     
-                    local cx1=$(( pxi/8 - MARGIN_CHUNKS ))
-                    local cy1=$(( pyi/8 - MARGIN_CHUNKS ))
-                    local cx2=$(( pxi/8 + MARGIN_CHUNKS ))
-                    local cy2=$(( pyi/8 + MARGIN_CHUNKS ))
+                    local cx1=$(( pxi/10 - MARGIN_CHUNKS ))
+                    local cy1=$(( pyi/10 - MARGIN_CHUNKS ))
+                    local cx2=$(( pxi/10 + MARGIN_CHUNKS ))
+                    local cy2=$(( pyi/10 + MARGIN_CHUNKS ))
                     
                     ZONE_MAPS+=("Jugador (${puser}):${cx1}:${cy1}:${cx2}:${cy2}")
                     
@@ -891,28 +938,37 @@ build_protected_set_from_db() {
                 fi
             done <<< "$p_data"
         else
-            log_warn "  No se encontraron registros de posiciones en networkPlayers."
+            log_warn "  No se encontraron registros de posiciones en ${p_table}."
         fi
     else
         log_warn "  No se encontró players.db o sqlite3 no está disponible."
     fi
 
-    # 3. Detectar vehículos desde vehicles.db para evitar que desaparezcan del mapa
+    # 3. Detectar vehículos desde vehicles.db con inspección dinámica
     local v_db="${SAVE_DIR}/vehicles.db"
     local vehicle_count=0
     if [[ -f "$v_db" ]] && command -v sqlite3 &>/dev/null; then
-        log_info "Escaneando vehículos registrados en vehicles.db..."
+        log_info "Escaneando vehículos registrados en vehicles.db (con inspección dinámica)..."
+        local v_cols
+        v_cols=$(sqlite3 "$v_db" "PRAGMA table_info(vehicles);" 2>/dev/null || true)
+        local col_vx="wx" col_vy="wy"
+        echo "$v_cols" | grep -qi "worldX" && col_vx="worldX"
+        echo "$v_cols" | grep -qi "worldY" && col_vy="worldY"
+        echo "$v_cols" | grep -qi "^x|" && col_vx="x"
+        echo "$v_cols" | grep -qi "^y|" && col_vy="y"
+
         local v_data
-        v_data=$(sqlite3 "$v_db" "SELECT wx, wy FROM vehicles;" 2>/dev/null || true)
+        v_data=$(sqlite3 "$v_db" "SELECT ${col_vx}, ${col_vy} FROM vehicles;" 2>/dev/null || true)
         
         if [[ -n "$v_data" ]]; then
             while IFS='|' read -r vwx vwy; do
                 if [[ -n "$vwx" && "$vwx" =~ ^-?[0-9]+$ && -n "$vwy" && "$vwy" =~ ^-?[0-9]+$ ]]; then
                     ((vehicle_count++)) || true
-                    # Para vehículos, usamos un margen estrecho de 1 chunk de seguridad
+                    local vcx=$(( vwx / 10 ))
+                    local vcy=$(( vwy / 10 ))
                     for ((dcx=-1; dcx<=1; dcx++)); do
                         for ((dcy=-1; dcy<=1; dcy++)); do
-                            PROTECTED_CHUNKS+=("$((vwx+dcx)):$((vwy+dcy))")
+                            PROTECTED_CHUNKS+=("$((vcx+dcx)):$((vcy+dcy))")
                         done
                     done
                 fi
