@@ -79,16 +79,16 @@ case "$cmd" in
             exit 1
         fi
         print_header
-        CHUNK_X=$((TILE_X / 10))
-        CHUNK_Y=$((TILE_Y / 10))
-        TILE_X_MIN=$((CHUNK_X * 10))
-        TILE_Y_MIN=$((CHUNK_Y * 10))
-        CELL_X=$((CHUNK_X / 30))
-        CELL_Y=$((CHUNK_Y / 30))
+        CHUNK_X=$((TILE_X / 8))
+        CHUNK_Y=$((TILE_Y / 8))
+        TILE_X_MIN=$((CHUNK_X * 8))
+        TILE_Y_MIN=$((CHUNK_Y * 8))
+        CELL_X=$((CHUNK_X * 8 / 300))
+        CELL_Y=$((CHUNK_Y * 8 / 300))
         echo -e "  ${CYN}Tile ingresado:${RST}    X=${TILE_X}, Y=${TILE_Y}"
         echo ""
         echo -e "  ${GRN}Archivo de chunk:${RST}  ${SAVE_DIR}/map/${CHUNK_X}/${CHUNK_Y}.bin"
-        echo -e "  ${GRN}Rango del chunk:${RST}   tiles ${TILE_X_MIN}-$((TILE_X_MIN+9)), ${TILE_Y_MIN}-$((TILE_Y_MIN+9))"
+        echo -e "  ${GRN}Rango del chunk:${RST}   tiles ${TILE_X_MIN}-$((TILE_X_MIN+7)), ${TILE_Y_MIN}-$((TILE_Y_MIN+7))"
         echo -e "  ${GRN}Celda del mapa:${RST}    Cell(${CELL_X}, ${CELL_Y})"
         echo ""
         FILE="${SAVE_DIR}/map/${CHUNK_X}/${CHUNK_Y}.bin"
@@ -101,7 +101,7 @@ case "$cmd" in
         fi
         echo ""
         echo -e "  ${DIM}Para preservar esta zona en pz_wipe.sh -> Modo 3 -> Opcion A:${RST}"
-        echo -e "  ${CYN}Zona: ${TILE_X_MIN},${TILE_Y_MIN},$((TILE_X_MIN+9)),$((TILE_Y_MIN+9))${RST}"
+        echo -e "  ${CYN}Zona: ${TILE_X_MIN},${TILE_Y_MIN},$((TILE_X_MIN+7)),$((TILE_Y_MIN+7))${RST}"
         ;;
 
     chunk)
@@ -113,14 +113,14 @@ case "$cmd" in
             exit 1
         fi
         print_header
-        TILE_X_MIN=$((CX * 10))
-        TILE_Y_MIN=$((CY * 10))
-        CELL_X=$((CX / 30))
-        CELL_Y=$((CY / 30))
+        TILE_X_MIN=$((CX * 8))
+        TILE_Y_MIN=$((CY * 8))
+        CELL_X=$((CX * 8 / 300))
+        CELL_Y=$((CY * 8 / 300))
         echo -e "  ${CYN}Archivo:${RST}  ${SAVE_DIR}/map/${CX}/${CY}.bin"
         echo ""
-        echo -e "  ${GRN}Cubre tiles X:${RST}  ${TILE_X_MIN} - $((TILE_X_MIN+9))"
-        echo -e "  ${GRN}Cubre tiles Y:${RST}  ${TILE_Y_MIN} - $((TILE_Y_MIN+9))"
+        echo -e "  ${GRN}Cubre tiles X:${RST}  ${TILE_X_MIN} - $((TILE_X_MIN+7))"
+        echo -e "  ${GRN}Cubre tiles Y:${RST}  ${TILE_Y_MIN} - $((TILE_Y_MIN+7))"
         echo -e "  ${GRN}Celda:${RST}          Cell(${CELL_X}, ${CELL_Y})"
         echo ""
         FILE="${SAVE_DIR}/map/${CX}/${CY}.bin"
@@ -143,11 +143,11 @@ case "$cmd" in
         while IFS= read -r chunk_file; do
             CX=$(basename "$(dirname "$chunk_file")")
             CY=$(basename "$chunk_file" .bin)
-            TILE_X=$((CX * 10))
-            TILE_Y=$((CY * 10))
+            TILE_X=$((CX * 8))
+            TILE_Y=$((CY * 8))
             MOD=$(date -r "$chunk_file" "+%H:%M:%S")
             SIZE=$(du -sh "$chunk_file" | cut -f1)
-            echo -e "  ${MAG}map/${CX}/${CY}.bin${RST}  tiles(${TILE_X}-$((TILE_X+9)), ${TILE_Y}-$((TILE_Y+9)))  ${SIZE}  mod:${MOD}"
+            echo -e "  ${MAG}map/${CX}/${CY}.bin${RST}  tiles(${TILE_X}-$((TILE_X+7)), ${TILE_Y}-$((TILE_Y+7)))  ${SIZE}  mod:${MOD}"
             ((COUNT++)) || true
         done < <(find "${SAVE_DIR}/map" -name "*.bin" -mmin -"${MINUTES}" | sort -t/ -k1,1n -k2,2n 2>/dev/null)
 
@@ -178,8 +178,8 @@ case "$cmd" in
         IFS=',' read -r TX1 TY1 TX2 TY2 <<< "$ZONE"
         if [[ $TX1 -gt $TX2 ]]; then tmp=$TX1; TX1=$TX2; TX2=$tmp; fi
         if [[ $TY1 -gt $TY2 ]]; then tmp=$TY1; TY1=$TY2; TY2=$tmp; fi
-        CX1=$((TX1 / 10)); CY1=$((TY1 / 10))
-        CX2=$((TX2 / 10)); CY2=$((TY2 / 10))
+        CX1=$((TX1 / 8)); CY1=$((TY1 / 8))
+        CX2=$((TX2 / 8)); CY2=$((TY2 / 8))
         print_header
         echo -e "  Zona tiles: (${TX1},${TY1}) -> (${TX2},${TY2})"
         echo -e "  Rango chunks: (${CX1},${CY1}) -> (${CX2},${CY2})"

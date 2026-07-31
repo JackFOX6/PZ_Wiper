@@ -568,10 +568,10 @@ build_protected_set_from_zones() {
         IFS=',' read -r tx1 ty1 tx2 ty2 <<< "$zone"
         if [[ $tx1 -gt $tx2 ]]; then local t=$tx1; tx1=$tx2; tx2=$t; fi
         if [[ $ty1 -gt $ty2 ]]; then local t=$ty1; ty1=$ty2; ty2=$t; fi
-        local cx1=$(( tx1/10 - MARGIN_CHUNKS ))
-        local cy1=$(( ty1/10 - MARGIN_CHUNKS ))
-        local cx2=$(( tx2/10 + MARGIN_CHUNKS ))
-        local cy2=$(( ty2/10 + MARGIN_CHUNKS ))
+        local cx1=$(( tx1/8 - MARGIN_CHUNKS ))
+        local cy1=$(( ty1/8 - MARGIN_CHUNKS ))
+        local cx2=$(( tx2/8 + MARGIN_CHUNKS ))
+        local cy2=$(( ty2/8 + MARGIN_CHUNKS ))
         ZONE_MAPS+=("Zona Manual #${count}:${cx1}:${cy1}:${cx2}:${cy2}")
         ((count++)) || true
         log_info "  Zona (${tx1},${ty1})→(${tx2},${ty2}) | Chunks (${cx1},${cy1})→(${cx2},${cy2}) | Margen: ${MARGIN_CHUNKS}"
@@ -591,10 +591,10 @@ build_protected_set_from_zones_append() {
         IFS=',' read -r tx1 ty1 tx2 ty2 <<< "$zone"
         if [[ $tx1 -gt $tx2 ]]; then local t=$tx1; tx1=$tx2; tx2=$t; fi
         if [[ $ty1 -gt $ty2 ]]; then local t=$ty1; ty1=$ty2; ty2=$t; fi
-        local cx1=$(( tx1/10 - MARGIN_CHUNKS ))
-        local cy1=$(( ty1/10 - MARGIN_CHUNKS ))
-        local cx2=$(( tx2/10 + MARGIN_CHUNKS ))
-        local cy2=$(( ty2/10 + MARGIN_CHUNKS ))
+        local cx1=$(( tx1/8 - MARGIN_CHUNKS ))
+        local cy1=$(( ty1/8 - MARGIN_CHUNKS ))
+        local cx2=$(( tx2/8 + MARGIN_CHUNKS ))
+        local cy2=$(( ty2/8 + MARGIN_CHUNKS ))
         ZONE_MAPS+=("Zona Manual Anexa #${count}:${cx1}:${cy1}:${cx2}:${cy2}")
         ((count++)) || true
         log_info "  [ANEXO MANUAL] Zona (${tx1},${ty1})→(${tx2},${ty2}) | Chunks (${cx1},${cy1})→(${cx2},${cy2})"
@@ -772,8 +772,8 @@ do_selective_wipe() {
         declare -A PROTECTED_CELLS=()
         for entry in "${PROTECTED_CHUNKS[@]:-}"; do
             IFS=':' read -r cx cy <<< "$entry"
-            local cell_x=$(( cx / 30 ))
-            local cell_y=$(( cy / 30 ))
+            local cell_x=$(( cx * 8 / 300 ))
+            local cell_y=$(( cy * 8 / 300 ))
             PROTECTED_CELLS["${cell_x}_${cell_y}"]=1
         done
 
@@ -871,10 +871,10 @@ build_protected_set_from_db() {
                     local ty2=$(( sy + sh ))
                     log_ok "  [REFUGIO DETECTADO] Owner: ${owner} | Tiles: (${sx},${sy}) → (${tx2},${ty2})"
                     
-                    local cx1=$(( sx/10 - MARGIN_CHUNKS ))
-                    local cy1=$(( sy/10 - MARGIN_CHUNKS ))
-                    local cx2=$(( tx2/10 + MARGIN_CHUNKS ))
-                    local cy2=$(( ty2/10 + MARGIN_CHUNKS ))
+                    local cx1=$(( sx/8 - MARGIN_CHUNKS ))
+                    local cy1=$(( sy/8 - MARGIN_CHUNKS ))
+                    local cx2=$(( tx2/8 + MARGIN_CHUNKS ))
+                    local cy2=$(( ty2/8 + MARGIN_CHUNKS ))
                     
                     ZONE_MAPS+=("Refugio (${owner}):${cx1}:${cy1}:${cx2}:${cy2}")
                     
@@ -923,10 +923,10 @@ build_protected_set_from_db() {
                 if [[ -n "$pxi" && "$pxi" =~ ^-?[0-9]+$ && -n "$pyi" && "$pyi" =~ ^-?[0-9]+$ ]]; then
                     log_ok "  [JUGADOR DETECTADO] '${puser}' en ubicación: (${pxi},${pyi})"
                     
-                    local cx1=$(( pxi/10 - MARGIN_CHUNKS ))
-                    local cy1=$(( pyi/10 - MARGIN_CHUNKS ))
-                    local cx2=$(( pxi/10 + MARGIN_CHUNKS ))
-                    local cy2=$(( pyi/10 + MARGIN_CHUNKS ))
+                    local cx1=$(( pxi/8 - MARGIN_CHUNKS ))
+                    local cy1=$(( pyi/8 - MARGIN_CHUNKS ))
+                    local cx2=$(( pxi/8 + MARGIN_CHUNKS ))
+                    local cy2=$(( pyi/8 + MARGIN_CHUNKS ))
                     
                     ZONE_MAPS+=("Jugador (${puser}):${cx1}:${cy1}:${cx2}:${cy2}")
                     
@@ -964,8 +964,8 @@ build_protected_set_from_db() {
             while IFS='|' read -r vwx vwy; do
                 if [[ -n "$vwx" && "$vwx" =~ ^-?[0-9]+$ && -n "$vwy" && "$vwy" =~ ^-?[0-9]+$ ]]; then
                     ((vehicle_count++)) || true
-                    local vcx=$(( vwx / 10 ))
-                    local vcy=$(( vwy / 10 ))
+                    local vcx=$(( vwx / 8 ))
+                    local vcy=$(( vwy / 8 ))
                     for ((dcx=-1; dcx<=1; dcx++)); do
                         for ((dcy=-1; dcy<=1; dcy++)); do
                             PROTECTED_CHUNKS+=("$((vcx+dcx)):$((vcy+dcy))")
