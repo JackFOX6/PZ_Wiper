@@ -7,10 +7,10 @@
 
   <p>
     <a href="LICENSE">
-      <img src="https://img.shields.io/badge/LICENCIA-MIT-00ff88?style=for-the-badge&labelColor=0a0908" alt="License">
+      <img src="https://img.shields.io/badge/LICENCIA-MIT-ff2222?style=for-the-badge&labelColor=0a0908" alt="License">
     </a>
-    <img src="https://img.shields.io/badge/BUILD-42_SOPORTADO-00ff88?style=for-the-badge&labelColor=0a0908" alt="B42 Supported">
-    <img src="https://img.shields.io/badge/BASH-100%25-00ff88?style=for-the-badge&labelColor=0a0908" alt="Bash">
+    <img src="https://img.shields.io/badge/BUILD-42_SOPORTADO-ff2222?style=for-the-badge&labelColor=0a0908" alt="B42 Supported">
+    <img src="https://img.shields.io/badge/BASH-100%25-ff2222?style=for-the-badge&labelColor=0a0908" alt="Bash">
   </p>
 </div>
 
