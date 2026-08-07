@@ -22,10 +22,6 @@
 
 Está diseñado para automatizar el proceso de reiniciar un mapa multijugador mientras preserva de forma segura la progresión de los jugadores, las bases de datos de whitelist, los refugios (safehouses) construidos y los estados dinámicos del mundo.
 
-<div align="center">
-  <img src="assets/terminal.png" alt="Jack-o-Wiper Terminal" width="80%">
-</div>
-
 ---
 
 ## [ DIRECTIVAS PRINCIPALES ] CARACTERÍSTICAS
