@@ -199,47 +199,55 @@ validate_environment() {
 }
 
 # ════════════════════════════════════════════════════════════════════════════
-#  VALIDACIÓN DE INTEGRIDAD DE SANDBOXVARS (MODS)
+#  VALIDACIÓN DE INTEGRIDAD DE SANDBOXVARS
+#  No se intenta inferir la presencia de mods por nombres de variables:
+#  cada mod puede usar una estructura y una cantidad de líneas diferente.
 # ════════════════════════════════════════════════════════════════════════════
 validate_sandbox_completeness() {
     local file="${SERVER_SANDBOX}"
-    [[ ! -f "$file" ]] && return 0
+    if [[ ! -f "$file" ]]; then
+        echo ""
+        log_warn "No se encontró ${SERVER_NAME}_SandboxVars.lua; el backup no incluirá SandboxVars."
+        return 0
+    fi
 
-    local line_count=0
+    local line_count
     line_count=$(wc -l < "$file" 2>/dev/null || echo 0)
-    
-    local -a missing_keywords=()
-    for kw in "WDecay" "workingSeatbelt" "BetterSafehouse" "RestoreUtilities"; do
-        if ! grep -q "$kw" "$file" 2>/dev/null; then
-            missing_keywords+=("$kw")
-        fi
-    done
+    local has_root=false
+    local has_values=false
+    local has_close=false
 
-    local is_incomplete=false
-    if [[ $line_count -lt 1100 ]]; then
-        is_incomplete=true
-    fi
-    if [[ ${#missing_keywords[@]} -gt 0 ]]; then
-        is_incomplete=true
-    fi
+    # Comprobación deliberadamente conservadora: valida la forma básica del
+    # archivo, pero no intenta adivinar qué variables aporta cada mod.
+    grep -Eq '^[[:space:]]*SandboxVars[[:space:]]*=[[:space:]]*\{' "$file" 2>/dev/null && has_root=true
+    grep -Eq '^[[:space:]]+[A-Za-z_][A-Za-z0-9_]*[[:space:]]*=' "$file" 2>/dev/null && has_values=true
+    grep -Eq '^[[:space:]]*\}[[:space:]]*(--.*)?$' "$file" 2>/dev/null && has_close=true
 
-    if $is_incomplete; then
+    if ! $has_root || ! $has_values || ! $has_close || [[ "$line_count" -lt 3 ]]; then
         echo ""
-        log_warn "⚠️ DETECTADA CONFIGURACIÓN SANDBOX INCOMPLETA"
-        log_warn "El archivo SandboxVars.lua actual parece ser vanilla o le faltan mods."
-        log_warn "  • Líneas en archivo: ${line_count} (Mínimo recomendado para mods: 1100)"
-        if [[ ${#missing_keywords[@]} -gt 0 ]]; then
-            log_warn "  • Bloques de mods faltantes: [ ${missing_keywords[*]} ]"
-        fi
+        log_warn "⚠️ SandboxVars.lua parece inválido o vacío"
+        log_warn "  • Líneas en archivo: ${line_count}"
+        log_warn "  • Se esperaba una tabla SandboxVars con variables de configuración."
         echo ""
-        log_warn "Si realizas el wipe ahora, la copia de seguridad que se guardará"
-        log_warn "no tendrá las variables de tus mods."
-        echo ""
+        log_warn "El backup conservará exactamente el archivo actual."
         if ! confirm "¿Deseas proceder con el backup/wipe a pesar de esto?"; then
             log_error "Operación cancelada por el usuario."
             press_enter
             return 1
         fi
+        return 0
+    fi
+
+    local configured_mods=""
+    if [[ -f "$SERVER_INI" ]]; then
+        configured_mods=$(sed -n 's/^[[:space:]]*Mods[[:space:]]*=[[:space:]]*//p' "$SERVER_INI" | head -n 1)
+    fi
+    if [[ -n "$configured_mods" ]]; then
+        local mod_count
+        mod_count=$(awk -F';' '{ count = 0; for (i = 1; i <= NF; i++) if ($i ~ /[^[:space:]]/) count++; print count; exit }' <<< "$configured_mods")
+        log_info "SandboxVars.lua válido (${line_count} líneas); Mods= declara ${mod_count} mod(s)."
+    else
+        log_info "SandboxVars.lua válido (${line_count} líneas); no hay Mods= declarados en el .ini."
     fi
     return 0
 }
